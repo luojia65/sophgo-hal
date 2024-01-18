@@ -1,6 +1,7 @@
 #![no_std]
 
 pub mod gpio;
+pub mod pads;
 
 use core::ops;
 
@@ -27,6 +28,20 @@ pub struct GPIO<A: BaseAddress> {
 
 impl<A: BaseAddress> ops::Deref for GPIO<A> {
     type Target = gpio::RegisterBlock;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*(self.base.ptr() as *const _) }
+    }
+}
+
+/// Pad function and I/O configuration.
+pub struct PADS<A: BaseAddress> {
+    base: A,
+}
+
+impl<A: BaseAddress> ops::Deref for PADS<A> {
+    type Target = pads::RegisterBlock;
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
