@@ -2,10 +2,10 @@
 
 pub mod gpio;
 pub mod pad;
-
-use core::ops;
+pub mod uart;
 
 use base_address::BaseAddress;
+use core::ops;
 
 /// Universal Asynchronous Receiver/Transmitter.
 pub struct UART<A: BaseAddress> {
