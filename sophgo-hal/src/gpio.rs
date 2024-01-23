@@ -108,6 +108,11 @@ impl<A: BaseAddress, const I: u8, M> Gpio<A, I, M> {
             pad,
         }
     }
+    // TODO into_pull_down_output
+    // TODO into_floating_output
+    // TODO into_pull_up_input
+    // TODO into_pull_down_input
+    // TODO into_floating_input
 }
 
 /// Ownership wrapper of a GPIO signal and a pad.
@@ -125,6 +130,11 @@ impl<A: BaseAddress, A2: BaseAddress, const I: u8, const N: usize, M, T>
         let (gpio, pad) = self.into_inner();
         gpio.into_pull_up_output(pad.into_gpio_pull_up())
     }
+    // TODO into_pull_down_output
+    // TODO into_floating_output
+    // TODO into_pull_up_input
+    // TODO into_pull_down_input
+    // TODO into_floating_input
 }
 
 impl<T, U> GpioPad<T, U> {
@@ -142,17 +152,13 @@ impl<T, U> ErrorType for GpioPad<T, U> {
 impl<A: BaseAddress, const I: u8, U> OutputPin for GpioPad<Gpio<A, I, Output>, U> {
     #[inline]
     fn set_low(&mut self) -> Result<(), Self::Error> {
-        unsafe {
-            self.gpio.base.data.modify(|w| w & !(1 << I));
-        }
+        unsafe { self.gpio.base.data.modify(|w| w & !(1 << I)) };
         Ok(())
     }
 
     #[inline]
     fn set_high(&mut self) -> Result<(), Self::Error> {
-        unsafe {
-            self.gpio.base.data.modify(|w| w | (1 << I));
-        }
+        unsafe { self.gpio.base.data.modify(|w| w | (1 << I)) };
         Ok(())
     }
 }

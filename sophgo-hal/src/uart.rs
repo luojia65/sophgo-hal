@@ -61,7 +61,7 @@ pub struct RegisterBlock {
     pub stet: RW<u32>,
     /// Halt TX.
     pub htx: RW<u32>,
-    /// DMA Software Acknowledg.
+    /// DMA Software Acknowledge.
     pub dmasa: RW<u32>,
 }
 
@@ -71,7 +71,7 @@ pub struct RegisterBlock {
 pub struct LCR(u32);
 
 impl LCR {
-    const WROD_LENGTH: u32 = 0b11;
+    const WORD_LENGTH: u32 = 0b11;
     const STOP_BIT: u32 = 1 << 2;
     const PARITY: u32 = 0b11 << 3;
     const DIVISOR_LATCH_ACCESS: u32 = 1 << 7;
@@ -79,12 +79,12 @@ impl LCR {
     /// Set word length.
     #[inline]
     pub fn set_word_length(self, len: WordLength) -> Self {
-        Self((self.0 & !(Self::WROD_LENGTH)) | (len as u32))
+        Self((self.0 & !(Self::WORD_LENGTH)) | (len as u32))
     }
     /// Get word length.
     #[inline]
     pub fn word_length(self) -> WordLength {
-        match self.0 & (Self::WROD_LENGTH) {
+        match self.0 & (Self::WORD_LENGTH) {
             0b00 => WordLength::Five,
             0b01 => WordLength::Six,
             0b10 => WordLength::Seven,

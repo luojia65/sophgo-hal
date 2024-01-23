@@ -41,21 +41,6 @@ pub struct FMux {
     _reserved3: [u8; 0x1750],
 }
 
-impl FMux {
-    /// Gets the pad function multiplexer register for the given pad number `N`.
-    #[inline]
-    pub fn fmux<const N: usize>(&self) -> &RW<u32> {
-        match N {
-            18 => &self.uart0_tx,
-            19 => &self.uart0_rx,
-            28 => &self.i2c0_scl,
-            29 => &self.i2c0_sda,
-            49 => &self.pwr_gpio2,
-            _ => todo!(),
-        }
-    }
-}
-
 /// Non-RTC domain pad configurations.
 #[repr(C)]
 pub struct PadConfigs {
@@ -69,6 +54,29 @@ pub struct PadConfigs {
     pub i2c0_scl: RW<PadConfig>,
     /// Non-RTC domain i2c-0 SDA pad configurations.
     pub i2c0_sda: RW<PadConfig>,
+}
+
+/// Power (RTC) domain pad configurations.
+#[repr(C)]
+pub struct PwrPadConfigs {
+    _reserved0: [u8; 0x34],
+    /// Power (RTC) domain GPIO-2 pad configuration.
+    pub pwr_gpio2: RW<PadConfig>,
+}
+
+impl FMux {
+    /// Gets the pad function multiplexer register for the given pad number `N`.
+    #[inline]
+    const fn fmux<const N: usize>(&self) -> &RW<u32> {
+        match N {
+            18 => &self.uart0_tx,
+            19 => &self.uart0_rx,
+            28 => &self.i2c0_scl,
+            29 => &self.i2c0_sda,
+            49 => &self.pwr_gpio2,
+            _ => todo!(),
+        }
+    }
 }
 
 impl PadConfigs {
@@ -86,14 +94,6 @@ impl PadConfigs {
             _ => todo!(),
         }
     }
-}
-
-/// Power (RTC) domain pad configurations.
-#[repr(C)]
-pub struct PwrPadConfigs {
-    _reserved0: [u8; 0x34],
-    /// Power (RTC) domain GPIO-2 pad configuration.
-    pub pwr_gpio2: RW<PadConfig>,
 }
 
 impl PwrPadConfigs {
@@ -164,6 +164,8 @@ impl PadConfig {
 }
 
 /// Ownership of a pad with function type state.
+///
+/// This pad can be either in conventional power domain or RTC power domain.
 pub struct Pad<A: BaseAddress, const N: usize, F> {
     base: A,
     _function: PhantomData<F>,
@@ -173,8 +175,7 @@ impl<A: BaseAddress, const N: usize, F> Pad<A, N, F> {
     /// Converts the function of this pad.
     #[inline]
     pub fn into_function<F2: Function>(self, fmux: impl AsRef<FMux>) -> Pad<A, N, F2> {
-        unsafe { fmux.as_ref().fmux::<N>().write(F2::fmux::<N>()) };
-        unsafe { self.pad_config().modify(|w| w.set_pull(F2::PULL)) };
+        F2::configure::<N>(fmux.as_ref().fmux::<N>(), self.pad_config());
         Pad {
             base: self.base,
             _function: PhantomData,
@@ -206,11 +207,6 @@ impl<A: BaseAddress, const N: usize, T> Pad<A, N, GpioFunc<T>> {
     }
 }
 
-/// GPIO function with a pull mode (type state).
-pub struct GpioFunc<T> {
-    _pull: PhantomData<T>,
-}
-
 /// Pulled down as pull mode (type state).
 pub struct PullDown;
 
@@ -220,72 +216,62 @@ pub struct PullUp;
 /// Floating as pull mode (type state).
 pub struct Floating;
 
+/// Trait for all pull mode type states.
+pub trait PullMode {
+    /// Pull mode as value.
+    const PULL: Pull;
+}
+
+impl PullMode for PullDown {
+    const PULL: Pull = Pull::Down;
+}
+
+impl PullMode for PullUp {
+    const PULL: Pull = Pull::Up;
+}
+
+impl PullMode for Floating {
+    const PULL: Pull = Pull::None;
+}
+
+/// GPIO function with a pull mode (type state).
+pub struct GpioFunc<T> {
+    _pull: PhantomData<T>,
+}
+
 /// UART function (type state).
 pub struct UartFunc<const I: usize>;
 
 /// Trait for all valid pad functions.
 pub trait Function {
-    /// Pull direction associated with this pad function.
-    const PULL: Pull;
-    /// Function ID for the `fmux` multiplexer register.
-    fn fmux<const N: usize>() -> u32;
+    /// Configure pad `N` into function defined with `Self`, configuring function ID and pad configuration by `fmux` and `pad_config`.
+    fn configure<const N: usize>(fmux: &RW<u32>, pad_config: &RW<PadConfig>);
 }
 
-impl Function for GpioFunc<Floating> {
-    const PULL: Pull = Pull::None;
+impl<T: PullMode> Function for GpioFunc<T> {
     #[inline]
-    fn fmux<const N: usize>() -> u32 {
-        gpio_fmux::<N>()
-    }
-}
-
-impl Function for GpioFunc<PullUp> {
-    const PULL: Pull = Pull::Up;
-    #[inline]
-    fn fmux<const N: usize>() -> u32 {
-        gpio_fmux::<N>()
-    }
-}
-
-impl Function for GpioFunc<PullDown> {
-    const PULL: Pull = Pull::Down;
-    #[inline]
-    fn fmux<const N: usize>() -> u32 {
-        gpio_fmux::<N>()
-    }
-}
-
-const fn gpio_fmux<const N: usize>() -> u32 {
-    match N {
-        1..=45 | 51..=86 => 3,
-        47..=49 => 0,
-        _ => unimplemented!(),
+    fn configure<const N: usize>(fmux: &RW<u32>, pad_config: &RW<PadConfig>) {
+        let fmux_value = match N {
+            1..=45 | 51..=86 => 3,
+            47..=49 => 0,
+            _ => unimplemented!(),
+        };
+        unsafe { fmux.write(fmux_value) };
+        unsafe { pad_config.write(PadConfig(0).set_pull(T::PULL)) }
     }
 }
 
 impl<const I: usize> Function for UartFunc<I> {
-    const PULL: Pull = Pull::Up;
     #[inline]
-    fn fmux<const N: usize>() -> u32 {
-        uart_fmux::<N, I>()
-    }
-}
-
-const fn uart_fmux<const N: usize, const I: usize>() -> u32 {
-    match I {
-        0 => match N {
-            18..=19 => 0,
+    fn configure<const N: usize>(fmux: &RW<u32>, pad_config: &RW<PadConfig>) {
+        let fmux_value = match (I, N) {
+            (0, 18..=19) => 0,
+            (1, 28..=29) => 1,
+            (2, 28..=29) => 2,
             _ => unimplemented!(),
-        },
-        1 => match N {
-            28..=29 => 1,
-            _ => unimplemented!(),
-        },
-        2 => match N {
-            28..=29 => 2,
-            _ => unimplemented!(),
-        },
-        _ => unimplemented!(),
+        };
+        unsafe { fmux.write(fmux_value) };
+        unsafe { pad_config.write(PadConfig(0).set_pull(Pull::Up)) }
     }
 }
 
